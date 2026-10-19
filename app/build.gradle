@@ -1,0 +1,106 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+def signingProps = new Properties()
+def signingFile = rootProject.file("signing/keystore.properties")
+if (signingFile.exists()) signingFile.withInputStream { signingProps.load(it) }
+
+android {
+    namespace 'org.imci.transcriber'
+    compileSdk 35
+    ndkVersion "27.3.13750724"
+
+    defaultConfig {
+        applicationId "org.imci.transcriber"
+        minSdk 28
+        targetSdk 35
+        versionCode 3
+        versionName "1.2"
+
+        ndk {
+            // Both test phones (Poco F5, Redmi Note 7) are 64-bit ARM
+            abiFilters 'arm64-v8a'
+        }
+        externalNativeBuild {
+            cmake {
+                // ggml picks the best CPU variant at runtime (armv8.0 ... armv9.2)
+                arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (signingFile.exists()) {
+                storeFile file(signingProps['storeFile'])
+                storePassword signingProps['storePassword']
+                keyAlias signingProps['keyAlias']
+                keyPassword signingProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            externalNativeBuild {
+                cmake {
+                    // native code must stay optimised even in debug builds
+                    arguments "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
+        }
+        release {
+            signingConfig signingFile.exists() ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("src/main/cpp/CMakeLists.txt")
+            version "3.22.1"
+        }
+    }
+
+    androidResources {
+        // the 823 MB speech model is read in place from the APK - it must not be compressed
+        noCompress += ['bin']
+    }
+
+    packaging {
+        jniLibs {
+            // ggml loads its CPU-variant .so files from nativeLibraryDir by path,
+            // so they must be extracted on install
+            useLegacyPackaging true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.14'
+    }
+}
+
+dependencies {
+    implementation platform('androidx.compose:compose-bom:2024.06.00')
+    implementation 'androidx.activity:activity-compose:1.9.0'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+}
